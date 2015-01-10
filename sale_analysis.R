@@ -4,6 +4,8 @@
 #PCA!!
 #Clustering analysis?
 
+#Conditional Heatmap - Analyze probabilities for the proposed groups versus probabilities for rest
+
 #Writing this up in an Rmd file
 
 sales.file.name <- 'sales-data.csv'
@@ -19,16 +21,14 @@ get.sales.items <- function(sales) {
 }
 
 get.probabilities <- function(sales) {
-    probabilities <- lapply(get.sales.items(sales.subset), function(x) {
+    probabilities <- sapply(get.sales.items(sales), function(x) {
         sum(sales[[x]]) / nrow(sales)
     })
 }
 
 get.conditional.probabilities <- function(sales, item) {
     sales.subset <- filter.sales(sales, item)
-    conditional.probabilities <- sapply(get.sales.items(sales.subset), function(x) {
-        sum(sales.subset[[x]]) / nrow(sales.subset)
-    })
+    conditional.probabilities <- get.probabilities(sales.subset)
 }
 
 make.coincidence.matrix <- function(sales) {
@@ -60,6 +60,7 @@ probability.analysis <- function() {
 conditional.probability.analysis <- function() {
     total.sales <- get.sales.data()
     matrix <- make.coincidence.matrix(total.sales)
-    colors <- colorRampPalette(c("lightblue","cornflowerblue"))(32);
-    heatmap(data.matrix(matrix), col = colors, symm = TRUE)
+    colors <- colorRampPalette(c("white","cornflowerblue"))(32);
+    heatmap(t(data.matrix(matrix)), col = colors, symm = TRUE)
+    head(sort(unlist(get.probabilities(total.sales)), decreasing = TRUE), n = 15)
 }
