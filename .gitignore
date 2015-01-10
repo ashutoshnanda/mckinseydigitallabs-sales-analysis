@@ -1,0 +1,9 @@
+#History files
+.Rhistory
+
+#RStudio files
+.Rproj.user/
+*.Rproj
+
+#Zipped Data
+*.zip
