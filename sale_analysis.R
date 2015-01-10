@@ -6,8 +6,60 @@
 
 #Writing this up in an Rmd file
 
+sales.file.name <- 'sales-data.csv'
 
+get.sales.data <- function() {
+    sales.file <- read.csv(sales.file.name)
+    return(sales.file)
+}
 
-get_table <- function() {
-    
+get.sales.items <- function(sales) {
+    sales.items <- grep('item', colnames(sales), value = TRUE)
+    return(sales.items)
+}
+
+get.probabilities <- function(sales) {
+    probabilities <- lapply(get.sales.items(sales.subset), function(x) {
+        sum(sales[[x]]) / nrow(sales)
+    })
+}
+
+get.conditional.probabilities <- function(sales, item) {
+    sales.subset <- filter.sales(sales, item)
+    conditional.probabilities <- sapply(get.sales.items(sales.subset), function(x) {
+        sum(sales.subset[[x]]) / nrow(sales.subset)
+    })
+}
+
+make.coincidence.matrix <- function(sales) {
+    sales.items <- get.sales.items(sales)
+    coincidence.matrix <- data.frame()
+    for(i in 1:length(sales.items)) {
+        sale.item <- sales.items[i]
+        conditional.probabilities.for.item <- get.conditional.probabilities(sales, sale.item)
+        for(j in 1:length(conditional.probabilities.for.item)) {
+            coincidence.matrix[i, j] = conditional.probabilities.for.item[j]
+        }
+    }
+    colnames(coincidence.matrix) <- sales.items
+    rownames(coincidence.matrix) <- sales.items
+    return(coincidence.matrix)
+}
+
+filter.sales <- function(sales, item) {
+    sales.subset <- sales[sales[[item]] == 1, ]
+    return(sales.subset)
+}
+
+probability.analysis <- function() {
+    total.sales <- get.sales.data()
+    probs <- get.probabilities(total.sales)
+    plot(1:length(probs), probs)
+}
+
+conditional.probability.analysis <- function() {
+    total.sales <- get.sales.data()
+    matrix <- make.coincidence.matrix(total.sales)
+    colors <- colorRampPalette(c("lightblue","cornflowerblue"))(32);
+    heatmap(data.matrix(matrix), col = colors, symm = TRUE)
 }
