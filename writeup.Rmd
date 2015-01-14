@@ -10,7 +10,7 @@ output:
 
 This writeup will cover the analysis I did on sales data. The code and data relevant to this project can be found on [my Github](https://github.com/ashutoshnanda/mckinseydigitallabs-sales-analysis). I'd be excited to hear what you have to say, so please feel free to reach out to me [via email](mailto:ashutosh.nanda@columbia.edu)!
 
-The dataset consists of 100,000 records on transactions. Each of these transactions has a binary attribute for each of 50 items; essentially, each transaction either contains or does not contain a particular item. The essential task is to analyze the grouping of particular products; this is also known as a market basket analysis. I will show through 2 different methods (heatmap and hierarchical clustering; PCA and K-means clustering) that 3 distinct groups are present.
+The dataset consists of 100,000 records on transactions. Each of these transactions has a binary attribute for each of 50 items; essentially, each transaction either contains or does not contain a particular item. The essential task is to analyze the grouping of particular products; this is also known as a market basket analysis. I will show through 2 different methods (heatmap and hierarchical clustering; PCA and k-means clustering) that 3 distinct groups are present.
 
 ##Exploring The Data
 
@@ -82,7 +82,7 @@ Before explaining how to utilize this matrix except for simply looking at a bunc
 Now, one of my favorite visualization techniques is the heatmap. This allows one to see the hotspots of a matrix. It is a technique typically used in gene expression data because it allows researchers to easily spot which genes are being over-expressed or under-expressed. Instead of spotting genes of interest, here we will be able to find items of interest! Here is the code that generates the heatmap according to my preferences:
 ```{r heatmap, fig.height = 8}
 colors <- colorRampPalette(c("white","royalblue"))(256);
-heatmap(t(coincidence.matrix), col = colors, symm = TRUE, main = "Heatmap of Conditional Probabilities for the Items", xlab = "Item Number", ylab = "Item Number")
+map <- heatmap(t(coincidence.matrix), col = colors, symm = TRUE, main = "Heatmap of Conditional Probabilities for the Items", xlab = "Item Number", ylab = "Item Number")
 ```
 
 The interpretation of this heatmap is as follows: for any given item X, the pixel in the column for item Y is colored with an intensity corresponding to the conditional probability that item Y will be in a transaction involving X. (Those following along with the code would notice the extra call to `t` before passing in the matrix; this is required because by default, `heatmap` applies a transpose to the incoming matrix. If I didn't include this call to `t`, the interpretation I just described wouldn't apply.) 
@@ -115,4 +115,81 @@ At this point, it is appropriate to address the elephant in the room: the tree l
     + Item 7
     + Item 2
 
-##Confirming Results Through PCA and K-means clustering
+##Confirming Results Through PCA and k-means clustering
+
+In the last section, we analyzed the various items using a dendogram. This utilizes local similarities (between different pairs) to distinguish the various clusters. To take a slightly different approach, I will use PCA and k-means clustering. In particular, PCA looks to isolate the particular dimensions of a dataset; in this sense, it is taking a global perspective (taking into account the general shape of the data) and summarizing it in a lower dimension space. I will follow this up with k-means clustering to isolate various groups, which will indicate the different product groupings. 
+
+PCA is not generally applicable to any problem. Because it is a dimensionality reducing technique, one needs to ensure that enough dimension of the original data set is retained so that insights on the reduced dimension dataset carry over to the original dataset. In particular, I will go back to the `preserve.diagonal` parameter in the `make.coincidence.matrix` function. Since excluding the diagonal decreases the dimensionality of the matrix (there would be many more zero entries, and hence, very loosely speaking, less going on in the dataset), I will recalculate the coincidence.matrix to not include the diagonal. Additionally, when one usually performs PCA, one normalizes (subtract the mean, divide by standard deviation) the data ahead of time. However, this would introduce many non-zero entries into the matrix since the currently light regions would be converted to heavy negative regions. Thus, I will not scale or center the data ahead of time. Here is the code to generate and determine whether PCA is appropriate to analyze the conditional probabilities of the items:
+```{r pca-acceptability}
+coincidence.matrix <- make.coincidence.matrix(sales = total.sales, preserve.diagonal = FALSE)
+coincidence.matrix.pca <- prcomp(coincidence.matrix, center = FALSE, scale = FALSE)
+cumulative.variance <- cumsum(coincidence.matrix.pca$sdev^2 / sum(coincidence.matrix.pca$sdev^2))
+plot(cumulative.variance, ylim = c(0, 1), type = "l", main = "Determining Acceptability of PCA", ylab = "Variance Retained", xlab = "Number of Principal Components")
+head(cumulative.variance, n = 5)
+```
+
+One can see that even with the first component, we can retain over 60% of the variance in the original dataset! I will choose to use 3 principal components because we wish to visualize the data. This is acceptable because we retain around 84.5% of the original variance. We can also see this visually with a heatmap:
+```{r pcavisualverify}
+number.components <- 3
+coincidence.matrix.reduced <- coincidence.matrix.pca$x[,1:number.components] %*%
+                              t(coincidence.matrix.pca$rotation[,1:number.components])
+
+colors <- colorRampPalette(c("white","royalblue"))(256);
+heatmap(t(coincidence.matrix.reduced), col = colors, symm = TRUE, Rowv = map$rowInd, keep.dendro = FALSE, main = "Heatmap of Conditional Probabilities for the Items", xlab = "Item Number", ylab = "Item Number")
+
+```
+This heatmap should look very similar to the heatmap from before (even though the dimensionality has been reduced!). Most of the major features remain such as the 3 boxes in the top left corner and the region of correspondence below those 3 boxes. The major missing feature is the solid colored diagonal from before; we must remember that we excluded the diagonal this time, so if we retained the original variance of the data perfectly, we'd have completely white boxes on the diagonal. Instead, we have the diagonal filled in the box region and not filled for the rest of the heatmap. That indicates that the self-similarity for those items is part of a general pattern and could override the fact that we excluded the diagonal.
+
+We can also use the principal components analysis to compute a new representation for each item. In essense, each item's row full of conditional probabilities will now be replaced with 3 numbers that best represent its value relative to the rest of the dataset in the particular dimensions that the original dataset varies most in.
+```{r compute-prcomps}
+items.reducedform <- coincidence.matrix.pca$rotation[, 1:number.components]
+head(items.reducedform, n = 10)
+```
+
+Based on these new representations, I will cluster the data according to the k-means algorithm. Since I hope to minimize my squared error as much as possible while using as few clusters as possible, I will check to see how many clusters accomplishes this goal using the following code:
+```{r kmeans}
+fits <- sapply(1:20, function(x) {
+        clustering <- kmeans(items.reducedform, x, nstart = 50)
+        return(clustering$tot.withinss)
+    })
+plot(1:length(fits), fits, xlab = "Number of Clusters", ylab = "Sum of Intracluster Squared Error", main = "Determining Optimal Number of Clusters")
+```
+From this plot, it appears that 4 different clusters would be optimal since not much error is left to reduce after 4 clusters are introduced; introducing more clusters would simply overfit the data. Now, using the particular cluster assignments, we can visualize these data:
+```{r kmeansvisual, warning = FALSE, message = FALSE, webgl = TRUE}
+desired.fit <- kmeans(items.reducedform, 4, nstart = 50)
+
+library(scatterplot3d) #Plotting Library
+scatterplot3d(x = items.reducedform[, 1], y = items.reducedform[, 2], z = items.reducedform[, 3], color = desired.fit$cluster, main = "Visualization of k-means clustering", xlab = "First Principal Component", ylab = "Second Principal Component", zlab = "Third Principal Component")
+```
+From this plot, we can see that 4 different clusters are clearly present. In addition, they are very compactly arranged in relation to each other, which is ideal for our analysis since it suggests that there are 4 clear product groupings.
+
+As a final check on the initial results, we can analyze which items should be grouped together according to the 4 cluster fit: 
+```{r kmeansverify}
+cluster.assignments <- desired.fit$cluster
+cluster.groups <- lapply(unique(cluster.assignments), function(x) {
+        indices <- cluster.assignments == x
+        return(dimnames(items.reducedform)[[1]][indices])
+    })
+print(cluster.groups)
+```
+
+The first group is the "no grouping" group since it lumps so many different items with little similarity (as shown by the heatmap). The rest of the groups do match the groups I had presented earlier, so in fact, we have managed to show 2 different ways to arrive at this grouping results.
+
+##Conclusions
+
+As a summary, we analyzed sales data that recorded 50 particular items either being part of or not being part of the transaction. We used different techniques such as heatmaps, dendograms, PCA, and k-means clustering to analyze the data and extract the relevant groupings, which are listed below. Thanks for reading!
+
+* First Grouping
+    + Item 1
+    + Item 9
+    + Item 35
+    + Item 39
+    + Item 42
+* Second Grouping
+    + Item 3
+    + Item 5
+    + Item 22
+* Third Grouping
+    + Item 2
+    + Item 7
+    + Item 29

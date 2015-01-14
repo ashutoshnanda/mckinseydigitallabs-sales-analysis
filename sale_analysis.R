@@ -89,5 +89,10 @@ pca.analysis <- function() {
     plot(fits)
     desired.fit <- kmeans(items.pc, 4, nstart = 50)
     plot3d(items.pc, col = desired.fit$cluster)
-    print(sort(desired.fit$cluster))
+    cluster.assignments <- desired.fit$cluster
+    cluster.groups <- lapply(unique(cluster.assignments), function(x) {
+        indices <- cluster.assignments == x
+        return(dimnames(items.pc)[[1]][indices])
+    })
+    print(cluster.groups)
 }
