@@ -8,9 +8,9 @@ output:
 
 ##Introduction
 
-This writeup will cover the analysis I did on sales data. The code and data relevant to this project can be found on [my Github](https://github.com/ashutoshnanda/mckinseydigitallabs-sales-analysis). I'd be excited to hear what you have to say, so please feel free to reach out to me [via email](mailto:ashutosh.nanda@columbia.edu)!
+This writeup will cover the market basket analysis I did on sales data. The code and data relevant to this project can be found on [my Github](https://github.com/ashutoshnanda/mckinseydigitallabs-sales-analysis). I'd be excited to hear what you have to say, so please feel free to reach out to me [via email](mailto:ashutosh.nanda@columbia.edu)!
 
-The dataset consists of 100,000 records on transactions. Each of these transactions has a binary attribute for each of 50 items; essentially, each transaction either contains or does not contain a particular item. The essential task is to analyze the grouping of particular products; this is also known as a market basket analysis. I will show through 2 different methods (heatmap and hierarchical clustering; PCA and k-means clustering) that 3 distinct groups are present.
+The dataset consists of 100,000 records on transactions. Each of these transactions has a binary attribute for each of 50 items; essentially, each transaction either contains or does not contain a particular item. The essential task is to analyze the grouping of particular products; this is also known as a market basket analysis. I will show through 2 different methods (heatmap and dendogram via hierarchical clustering; PCA and k-means clustering) that 3 distinct product groupings are present.
 
 ##Exploring The Data
 
@@ -98,7 +98,7 @@ head(sort(probabilities, decreasing = TRUE), n = 15)
 
 Clearly, there is a steep drop off just as we had noticed in the exploratory analysis phase. Specifically, the probability for item 35 is 23.8%, which is good enough to be the 11th most popular. The 12th most frequent item, item 13, is purchased at a comparably dismal 1.7% rate. More importantly, all of the items that we have tentatively put into groups (the first 5 + 3 + 3 = 11 rows and columns of the heatmap) appear in the highly frequent purchased category. My theory is supported by the data because those items tentatively in groups are more frequently purchased than any other items. In particular, we know that it is a case of chips and toothpaste because the transpose cells (the transpose cell of the cell representing the conditional probability that a transaction contains item X given that the transaction contains item Y is the cell representing the conditional probability that a transaction contains item Y given that the transaction contains item X) are nearly white. In particular, consider items 9 (chips) and 31 (toothpaste): the probability that one purchases item 9 given that item 31 has been purchased (bottom left pixel) is somewhat high whereas the probability that item 31 is purchased given that item 9 has been purchased (top right pixel) is very low. When people are out buying item 31, they always happen to pick up item 9, but since it is not a reciprocal relationship, we know that people rarely buy item 31 when purchasing item 9, which discounts the idea that items 9 and 31 should belong in a grouping together. This brings back the importance of the box idea: each item must be frequently purchased with respect to each of the other items in order to consider the items as an appropriate grouping.
 
-At this point, it is appropriate to address the elephant in the room: the tree looking structures at the edges of the plot. These are dendograms based on heirarchical clustering. Specifically, heirarchical clustering is pairing together different things based on their relative similarity to each other. These are visualized via a dendogram. In particular, the part of a dendogram with a long vertical section (for example, the left part of the horizontal dendogram) means that particular set is similar to itself but not very similar to the other items in the tree; the part of a dendogram with a long horizontal section (for example, all the items that we have tentatively pegged as not being part of a grouping) indicates that all of these items are quite similar to each other as compared to the rest of the tree. By analyzing the dendogram, we see that the same 3 groups come out (no surprise as the dendogram was used to arrange the heatmap). However, we gain the insight that the particular groupings of items are very similar to themselves but not any of the other groupings or the set of the rest of the items. Based on the results of the heatmap and dendogram, I will say the following groupings exist:
+At this point, it is appropriate to address the elephant in the room: the tree looking structures at the edges of the plot. These are dendograms based on hierarchical clustering. Specifically, hierarchical clustering is pairing together different things based on their relative similarity to each other. These are visualized via a dendogram. In particular, the part of a dendogram with a long vertical section (for example, the left part of the horizontal dendogram) means that particular set is similar to itself but not very similar to the other items in the tree; the part of a dendogram with a long horizontal section (for example, all the items that we have tentatively pegged as not being part of a grouping) indicates that all of these items are quite similar to each other as compared to the rest of the tree. By analyzing the dendogram, we see that the same 3 groups come out (no surprise as the dendogram was used to arrange the heatmap). However, we gain the insight that the particular groupings of items are very similar to themselves but not any of the other groupings or the set of the rest of the items. Based on the results of the heatmap and dendogram, I will say the following groupings exist:
 
 * First Grouping
     + Item 9
@@ -117,7 +117,7 @@ At this point, it is appropriate to address the elephant in the room: the tree l
 
 ##Confirming Results Through PCA and k-means clustering
 
-In the last section, we analyzed the various items using a dendogram. This utilizes local similarities (between different pairs) to distinguish the various clusters. To take a slightly different approach, I will use PCA and k-means clustering. In particular, PCA looks to isolate the particular dimensions of a dataset; in this sense, it is taking a global perspective (taking into account the general shape of the data) and summarizing it in a lower dimension space. I will follow this up with k-means clustering to isolate various groups, which will indicate the different product groupings. 
+In the last section, we analyzed the various items using a dendogram. This utilizes local similarities (between different pairs) to distinguish the various clusters. To take a slightly different approach, I will use PCA and k-means clustering. In particular, PCA looks to isolate the most important dimensions of a dataset; in this sense, it is taking a global perspective (taking into account the general shape of the data) and summarizing it in a lower dimension space. I will follow this up with k-means clustering to isolate various groups, which will indicate the different product groupings. 
 
 PCA is not generally applicable to any problem. Because it is a dimensionality reducing technique, one needs to ensure that enough dimension of the original data set is retained so that insights on the reduced dimension dataset carry over to the original dataset. In particular, I will go back to the `preserve.diagonal` parameter in the `make.coincidence.matrix` function. Since excluding the diagonal decreases the dimensionality of the matrix (there would be many more zero entries, and hence, very loosely speaking, less going on in the dataset), I will recalculate the coincidence.matrix to not include the diagonal. Additionally, when one usually performs PCA, one normalizes (subtract the mean, divide by standard deviation) the data ahead of time. However, this would introduce many non-zero entries into the matrix since the currently light regions would be converted to heavy negative regions. Thus, I will not scale or center the data ahead of time. Here is the code to generate and determine whether PCA is appropriate to analyze the conditional probabilities of the items:
 ```{r pca-acceptability}
@@ -129,7 +129,7 @@ head(cumulative.variance, n = 5)
 ```
 
 One can see that even with the first component, we can retain over 60% of the variance in the original dataset! I will choose to use 3 principal components because we wish to visualize the data. This is acceptable because we retain around 84.5% of the original variance. We can also see this visually with a heatmap:
-```{r pcavisualverify}
+```{r pcavisualverify, fig.height = 8}
 number.components <- 3
 coincidence.matrix.reduced <- coincidence.matrix.pca$x[,1:number.components] %*%
                               t(coincidence.matrix.pca$rotation[,1:number.components])
@@ -138,9 +138,10 @@ colors <- colorRampPalette(c("white","royalblue"))(256);
 heatmap(t(coincidence.matrix.reduced), col = colors, symm = TRUE, Rowv = map$rowInd, keep.dendro = FALSE, main = "Heatmap of Conditional Probabilities for the Items", xlab = "Item Number", ylab = "Item Number")
 
 ```
-This heatmap should look very similar to the heatmap from before (even though the dimensionality has been reduced!). Most of the major features remain such as the 3 boxes in the top left corner and the region of correspondence below those 3 boxes. The major missing feature is the solid colored diagonal from before; we must remember that we excluded the diagonal this time, so if we retained the original variance of the data perfectly, we'd have completely white boxes on the diagonal. Instead, we have the diagonal filled in the box region and not filled for the rest of the heatmap. That indicates that the self-similarity for those items is part of a general pattern and could override the fact that we excluded the diagonal.
 
-We can also use the principal components analysis to compute a new representation for each item. In essense, each item's row full of conditional probabilities will now be replaced with 3 numbers that best represent its value relative to the rest of the dataset in the particular dimensions that the original dataset varies most in.
+This heatmap looks very similar to the heatmap from before (even though the dimensionality has been reduced!). Most of the major features remain such as the 3 boxes in the top left corner and the region of correspondence below those 3 boxes. The major missing feature is the solid colored diagonal from before; we must remember that we excluded the diagonal this time, so if we retained the original variance of the data perfectly, we'd have completely white boxes on the diagonal. Instead, we have the diagonal filled in the box region and not filled for the rest of the heatmap. That indicates that the self-similarity for those items is part of a general pattern and could override the fact that we excluded the diagonal.
+
+We can also use the principal components analysis to compute a new representation for each item. In essence, each item's row full of conditional probabilities will now be replaced with 3 numbers that best represent its value relative to the rest of the dataset in the particular dimensions that the original dataset varies most in.
 ```{r compute-prcomps}
 items.reducedform <- coincidence.matrix.pca$rotation[, 1:number.components]
 head(items.reducedform, n = 10)
@@ -152,8 +153,10 @@ fits <- sapply(1:20, function(x) {
         clustering <- kmeans(items.reducedform, x, nstart = 50)
         return(clustering$tot.withinss)
     })
-plot(1:length(fits), fits, xlab = "Number of Clusters", ylab = "Sum of Intracluster Squared Error", main = "Determining Optimal Number of Clusters")
+plot(1:length(fits), fits, xlab = "Number of Clusters", ylab = "Sum of Intracluster Squared Error", 
+main = "Determining Optimal Number of Clusters")
 ```
+
 From this plot, it appears that 4 different clusters would be optimal since not much error is left to reduce after 4 clusters are introduced; introducing more clusters would simply overfit the data. Now, using the particular cluster assignments, we can visualize these data:
 ```{r kmeansvisual, warning = FALSE, message = FALSE, webgl = TRUE}
 desired.fit <- kmeans(items.reducedform, 4, nstart = 50)
@@ -161,7 +164,8 @@ desired.fit <- kmeans(items.reducedform, 4, nstart = 50)
 library(scatterplot3d) #Plotting Library
 scatterplot3d(x = items.reducedform[, 1], y = items.reducedform[, 2], z = items.reducedform[, 3], color = desired.fit$cluster, main = "Visualization of k-means clustering", xlab = "First Principal Component", ylab = "Second Principal Component", zlab = "Third Principal Component")
 ```
-From this plot, we can see that 4 different clusters are clearly present. In addition, they are very compactly arranged in relation to each other, which is ideal for our analysis since it suggests that there are 4 clear product groupings.
+
+This plot confirms that 4 different clusters are clearly present. In addition, they are very compactly arranged in relation to each other, which is ideal for our analysis since it suggests that there are 4 clear product groupings.
 
 As a final check on the initial results, we can analyze which items should be grouped together according to the 4 cluster fit: 
 ```{r kmeansverify}
