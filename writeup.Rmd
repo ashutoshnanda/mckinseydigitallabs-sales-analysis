@@ -3,24 +3,116 @@ title: "Grouping Similar Products From Sales Data"
 author: "Ashutosh Nanda"
 date: "Wednesday, January 14, 2015"
 output:
-  html_document:
-    number_sections: yes
+  html_document
 ---
 
 ##Introduction
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This writeup will cover the analysis I did on sales data. The code and data relevant to this project can be found on [my Github](https://github.com/ashutoshnanda/mckinseydigitallabs-sales-analysis). I'd be excited to hear what you have to say, so please feel free to reach out to me [via email](mailto:ashutosh.nanda@columbia.edu)!
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+The dataset consists of 100,000 records on transactions. Each of these transactions has a binary attribute for each of 50 items; essentially, each transaction either contains or does not contain a particular item. The essential task is to analyze the grouping of particular products; this is also known as a market basket analysis. I will show through 2 different methods (heatmap and hierarchical clustering; PCA and K-means clustering) that 3 distinct groups are present.
 
-```{r}
-summary(cars)
+##Exploring The Data
+
+The data was easy to read in using the standard `read.csv` function: 
+
+```{r read-data}
+sales.file.name <- 'sales-data.csv'
+total.sales <- read.csv(sales.file.name)
+head(total.sales[, 1:10], n = 20)
 ```
 
-You can also embed plots, for example:
+```total.sales``` is now a data frame that contains one transaction per row and 51 columns: 1 for each of the items that are either part or not part of the transaction plus 1 additional column for the transaction ID. One gets the feeling that this data is very sparse from looking at this subset of the data.
 
-```{r, echo=FALSE}
-plot(cars)
+I started exploring this data by simply plotting a histogram for the probability of a certain item appearing in a transaction. (The helper function `get.sales.items` is needed since not all columns correspond to items; in fact, all but the first column correspond to an item.)
+
+```{r probability}
+get.sales.items <- function(sales) {
+    sales.items <- grep('item', colnames(sales), value = TRUE)
+    return(sales.items)
+}
+
+get.probabilities <- function(sales) {
+    probabilities <- sapply(get.sales.items(sales), function(x) {
+        sum(sales[[x]]) / nrow(sales)
+    })
+}
+
+probabilities <- get.probabilities(total.sales)
+hist(probabilities, main = "Probabilities for Items", xlab = "Percentage of Transactions", ylab = "Count")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+There appear to be 2 very distinct group of items: those which are purchased in about a quarter or so of transactions and those which are not purchased nearly as often. This will come into play when analyzing various groupings of items: consider the case when of a frequently purchased item (say a bag of chips) and a much less frequently purchased item (say toothpaste). One cannot claim that toothpaste is a good pairing with chips simply because everytime someone buys toothpaste, they also purchase chips: they will purchase chips regardless!
+
+##Conditional Probabilities
+When considering the last point (that certain items have a high rate of purchase) and the idea that the original dataset was very sparse, I decided to condense the dataset to a matrix of conditional probabilities. One benefit of having defined the `get.probabilities` function as we did is that we can pass any subset of sales (namely, the subset of sales that actually contain a particular item); to achieve this, I also made the `filter.sales` function to only retain those records which contain a particular item. Here is the code to generate a full matrix of conditional probabilities (which I decided to call a coincidence matrix): 
+
+```{r conditional-probability}
+filter.sales <- function(sales, item) {
+    sales.subset <- sales[sales[[item]] == 1, ]
+    return(sales.subset)
+}
+
+make.coincidence.matrix <- function(sales, preserve.diagonal = TRUE) {
+    sales.items <- get.sales.items(sales)
+    coincidence.matrix <- data.frame()
+    for(i in 1:length(sales.items)) {
+        sale.item <- sales.items[i]
+        filtered.sales <- filter.sales(sales, sale.item)
+        conditional.probabilities.for.item <- get.probabilities(filtered.sales)
+        for(j in 1:length(conditional.probabilities.for.item)) {
+            coincidence.matrix[i, j] = conditional.probabilities.for.item[j]
+            if(i == j && !preserve.diagonal) {
+                coincidence.matrix[i, j] = 0
+            }
+        }
+    }
+    colnames(coincidence.matrix) <- sales.items
+    rownames(coincidence.matrix) <- sales.items
+    return(data.matrix(coincidence.matrix))
+}
+
+coincidence.matrix <- make.coincidence.matrix(total.sales)
+head(coincidence.matrix[, 1:9], n = 20)
+```
+
+Before explaining how to utilize this matrix except for simply looking at a bunch of numbers that seem useful, let me explain the `preserve.diagonal` argument: I have included it here because not including the diagonal elements (all 1's since the conditional probability that an item X appears given that item X appears is 1) reduces the dimensionality of the matrix. This is useful in PCA, and I will touch on it there again.
+
+#Heatmaps and Dendograms
+Now, one of my favorite visualization techniques is the heatmap. This allows one to see the hotspots of a matrix. It is a technique typically used in gene expression data because it allows researchers to easily spot which genes are being over-expressed or under-expressed. Instead of spotting genes of interest, here we will be able to find items of interest! Here is the code that generates the heatmap according to my preferences:
+```{r heatmap, fig.height = 8}
+colors <- colorRampPalette(c("white","royalblue"))(256);
+heatmap(t(coincidence.matrix), col = colors, symm = TRUE, main = "Heatmap of Conditional Probabilities for the Items", xlab = "Item Number", ylab = "Item Number")
+```
+
+The interpretation of this heatmap is as follows: for any given item X, the pixel in the column for item Y is colored with an intensity corresponding to the conditional probability that item Y will be in a transaction involving X. (Those following along with the code would notice the extra call to `t` before passing in the matrix; this is required because by default, `heatmap` applies a transpose to the incoming matrix. If I didn't include this call to `t`, the interpretation I just described wouldn't apply.) 
+
+There are a couple interesting features to notice in this heatmap. The first is the diagonal line from the top left to the bottom right of the heatmap; this diagonal represents the case discussed earlier: the conditional probability that item X will contain item X is 1 (we can be sure that a column and row with the same index number refer to the same item because we specified that the heatmap should be symmetric). Thus, these dark boxes are a reference point for the most intense correspondences. 
+
+Another prominent feature is the set of 3 boxes in the top left corner. While the diagonal still stands out, these individual 3 boxes are also quite intensely colored, meaning that the items within these boxes are quite often purchased together. What's important is that the whole box is filled in, meaning that each item is highly purchased with respect to each of the other items; this is precisely the relation we are looking for. Tentatively, we can mark these boxes as items that have a particular group. 
+
+One of the other major features of the heatmap is the slightly intense region in the lower left portion (beneath the 3 boxes) of the heatmap. Here we see a relation that is not at the level of the boxes but not quite at the noise level that we see in other parts of the heatmap. Referring to the interpretation given earlier, these boxes correspond to conditional probabilities for an item that is tentatively not part of a group given that an item that is tentatively part of a group has been purchased. My personal theory (touched on earlier) is that the items in the groups are purchased quite frequently whereas the items not in the groups are not purchased as frequently. We can check this by analyzing those items with the highest probability:
+```{r probability-check}
+head(sort(probabilities, decreasing = TRUE), n = 15)
+```
+
+Clearly, there is a steep drop off just as we had noticed in the exploratory analysis phase. Specifically, the probability for item 35 is 23.8%, which is good enough to be the 11th most popular. The 12th most frequent item, item 13, is purchased at a comparably dismal 1.7% rate. More importantly, all of the items that we have tentatively put into groups (the first 5 + 3 + 3 = 11 rows and columns of the heatmap) appear in the highly frequent purchased category. My theory is supported by the data because those items tentatively in groups are more frequently purchased than any other items. In particular, we know that it is a case of chips and toothpaste because the transpose cells (the transpose cell of the cell representing the conditional probability that a transaction contains item X given that the transaction contains item Y is the cell representing the conditional probability that a transaction contains item Y given that the transaction contains item X) are nearly white. In particular, consider items 9 (chips) and 31 (toothpaste): the probability that one purchases item 9 given that item 31 has been purchased (bottom left pixel) is somewhat high whereas the probability that item 31 is purchased given that item 9 has been purchased (top right pixel) is very low. When people are out buying item 31, they always happen to pick up item 9, but since it is not a reciprocal relationship, we know that people rarely buy item 31 when purchasing item 9, which discounts the idea that items 9 and 31 should belong in a grouping together. This brings back the importance of the box idea: each item must be frequently purchased with respect to each of the other items in order to consider the items as an appropriate grouping.
+
+At this point, it is appropriate to address the elephant in the room: the tree looking structures at the edges of the plot. These are dendograms based on heirarchical clustering. Specifically, heirarchical clustering is pairing together different things based on their relative similarity to each other. These are visualized via a dendogram. In particular, the part of a dendogram with a long vertical section (for example, the left part of the horizontal dendogram) means that particular set is similar to itself but not very similar to the other items in the tree; the part of a dendogram with a long horizontal section (for example, all the items that we have tentatively pegged as not being part of a grouping) indicates that all of these items are quite similar to each other as compared to the rest of the tree. By analyzing the dendogram, we see that the same 3 groups come out (no surprise as the dendogram was used to arrange the heatmap). However, we gain the insight that the particular groupings of items are very similar to themselves but not any of the other groupings or the set of the rest of the items. Based on the results of the heatmap and dendogram, I will say the following groupings exist:
+
+* First Grouping
+    + Item 9
+    + Item 39
+    + Item 35
+    + Item 42
+    + Item 1
+* Second Grouping
+    + Item 5
+    + Item 3
+    + Item 22
+* Third Grouping
+    + Item 29
+    + Item 7
+    + Item 2
+
+##Confirming Results Through PCA and K-means clustering
